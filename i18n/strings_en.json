@@ -1,0 +1,16 @@
+{
+  "BT_OUT": {
+    "PLUGIN_NAME": "Bluetooth Output",
+    "SECTION_TITLE": "Bluetooth Output (A2DP source)",
+    "SECTION_DESC": "Stream Volumio playback to a Bluetooth speaker or headphones. The device must be paired once beforehand via 'bluetoothctl' over SSH (pair + trust). Enter its MAC address below.",
+    "ENABLE": "Enable Bluetooth output",
+    "ENABLE_DOC": "Connects to the configured device and adds it as an MPD output alongside your normal output.",
+    "MAC": "Device MAC address",
+    "MAC_DOC": "Format XX:XX:XX:XX:XX:XX. Run 'bluetoothctl devices' over SSH to find it.",
+    "NAME": "Device name (optional, for display only)",
+    "NAME_DOC": "Just a label to help you remember which speaker this is.",
+    "STATUS": "Status",
+    "STATUS_DOC": "Current connection/output status (informational).",
+    "SAVE": "Save & Apply"
+  }
+}

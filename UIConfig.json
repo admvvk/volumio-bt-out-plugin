@@ -1,0 +1,57 @@
+{
+  "page": {
+    "label": "TRANSLATE.BT_OUT.PLUGIN_NAME"
+  },
+  "sections": [
+    {
+      "id": "section_bluetooth",
+      "element": "section",
+      "label": "TRANSLATE.BT_OUT.SECTION_TITLE",
+      "description": "TRANSLATE.BT_OUT.SECTION_DESC",
+      "icon": "fa-bluetooth",
+      "onSave": {
+        "type": "controller",
+        "endpoint": "audio_interface/volumio_bt_out_plugin",
+        "method": "saveBluetoothConfig"
+      },
+      "saveButton": {
+        "label": "TRANSLATE.BT_OUT.SAVE",
+        "data": ["enabled", "deviceMac", "deviceName"]
+      },
+      "content": [
+        {
+          "id": "enabled",
+          "element": "switch",
+          "label": "TRANSLATE.BT_OUT.ENABLE",
+          "doc": "TRANSLATE.BT_OUT.ENABLE_DOC",
+          "value": false
+        },
+        {
+          "id": "deviceMac",
+          "element": "input",
+          "doc": "TRANSLATE.BT_OUT.MAC_DOC",
+          "label": "TRANSLATE.BT_OUT.MAC",
+          "element_subtype": "text",
+          "value": ""
+        },
+        {
+          "id": "deviceName",
+          "element": "input",
+          "doc": "TRANSLATE.BT_OUT.NAME_DOC",
+          "label": "TRANSLATE.BT_OUT.NAME",
+          "element_subtype": "text",
+          "value": ""
+        },
+        {
+          "id": "connectionStatus",
+          "element": "input",
+          "doc": "TRANSLATE.BT_OUT.STATUS_DOC",
+          "label": "TRANSLATE.BT_OUT.STATUS",
+          "element_subtype": "text",
+          "value": "",
+          "attributes": [{"readonly": true}]
+        }
+      ]
+    }
+  ]
+}
