@@ -72,15 +72,88 @@ ControllerBluetoothOut.prototype.getUIConfig = function () {
     __dirname + '/i18n/strings_en.json',
     __dirname + '/UIConfig.json'
   ).then(function (uiconf) {
-    uiconf.sections[0].content[0].value = self.config.get('enabled');
-    uiconf.sections[0].content[1].value = self.config.get('deviceMac');
-    uiconf.sections[0].content[2].value = self.config.get('deviceName');
-    uiconf.sections[0].content[3].value = self.config.get('connectionStatus');
+    var devices = self.getDiscoveredDevices();
+    var currentMac = self.config.get('deviceMac') || '';
+    var currentName = self.config.get('deviceName') || '';
+
+    // Always make sure the currently configured device (if any) shows up in
+    // the list even if it wasn't part of the last scan (e.g. after a reboot).
+    if (currentMac && !devices.some(function (d) { return d.mac === currentMac; })) {
+      devices.push({ mac: currentMac, name: currentName || currentMac });
+    }
+
+    var options = devices.map(function (d) {
+      return { value: d.mac, label: (d.name || d.mac) + ' (' + d.mac + ')' };
+    });
+
+    var selectedOption = options.find(function (o) { return o.value === currentMac; }) ||
+      { value: '', label: '-- no device selected --' };
+
+    uiconf.sections[0].content[1].value = self.config.get('enabled');
+    uiconf.sections[0].content[2].options = options;
+    uiconf.sections[0].content[2].value = selectedOption;
+    uiconf.sections[0].content[3].value = currentName;
+    uiconf.sections[0].content[4].value = self.config.get('connectionStatus');
     defer.resolve(uiconf);
   }).fail(function (e) {
     self.logger.error('[BluetoothOut] getUIConfig failed: ' + e);
     defer.reject(new Error());
   });
+
+  return defer.promise;
+};
+
+// Parse self.config's cached scan results into a plain array of {mac, name}.
+ControllerBluetoothOut.prototype.getDiscoveredDevices = function () {
+  var self = this;
+  try {
+    var raw = self.config.get('discoveredDevicesJson');
+    var parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (e) {
+    return [];
+  }
+};
+
+// Triggered by the "Scan for devices" button. Runs a short bluetoothctl
+// discovery session and stores the results for getUIConfig() to display.
+ControllerBluetoothOut.prototype.scanForDevices = function () {
+  var self = this;
+  var defer = libQ.defer();
+
+  self.commandRouter.pushToastMessage('info', 'Bluetooth Output', 'Сканирование Bluetooth-устройств (10 сек)...');
+
+  var scanScript =
+    '{ echo "power on"; echo "scan on"; sleep 8; echo "quit"; } | bluetoothctl';
+
+  // Run discovery first (its stdout is full of noisy [CHG]/RSSI lines we don't
+  // want to parse), then separately ask for the clean "devices" listing -
+  // that command's output is just "Device <MAC> <Name>" per line, no noise.
+  run(scanScript, { timeout: 15000 })
+    .then(function () { return run('bluetoothctl devices'); })
+    .then(function (stdout) {
+      var devices = [];
+      var seen = {};
+      var re = /^Device\s+([0-9A-Fa-f:]{17})\s+(.+)$/gm;
+      var m;
+      while ((m = re.exec(stdout)) !== null) {
+        var mac = m[1].toUpperCase();
+        var name = m[2].trim();
+        // Skip entries where the "name" is just the MAC with dashes (unnamed device)
+        if (name.replace(/-/g, ':').toUpperCase() === mac) { continue; }
+        if (!seen[mac]) { seen[mac] = true; devices.push({ mac: mac, name: name }); }
+      }
+
+      self.config.set('discoveredDevicesJson', JSON.stringify(devices));
+      self.commandRouter.pushToastMessage('success', 'Bluetooth Output',
+        'Найдено устройств: ' + devices.length + '. Закройте и снова откройте эту страницу настроек, чтобы увидеть их в списке.');
+      defer.resolve({});
+    })
+    .fail(function (e) {
+      self.logger.error('[BluetoothOut] scanForDevices failed: ' + e);
+      self.commandRouter.pushToastMessage('error', 'Bluetooth Output', 'Ошибка сканирования: ' + e);
+      defer.resolve({});
+    });
 
   return defer.promise;
 };
@@ -94,22 +167,36 @@ ControllerBluetoothOut.prototype.saveBluetoothConfig = function (data) {
 
   if (data['enabled'] && !macRegex.test(mac)) {
     self.commandRouter.pushToastMessage('error', 'Bluetooth Output',
-      'MAC-адрес устройства указан неверно (формат XX:XX:XX:XX:XX:XX)');
+      'Устройство не выбрано или MAC-адрес некорректен. Нажмите "Просканировать устройства" и выберите устройство из списка.');
     defer.resolve({});
     return defer.promise;
   }
 
+  var previousMac = self.config.get('deviceMac') || '';
+  var deviceChanged = mac && previousMac && mac !== previousMac;
+
+  var deviceName = mac;
+  var known = self.getDiscoveredDevices().find(function (d) { return d.mac === mac; });
+  if (known && known.name) { deviceName = known.name; }
+
   self.config.set('deviceMac', mac);
-  self.config.set('deviceName', data['deviceName'] || '');
+  self.config.set('deviceName', deviceName);
   self.config.set('enabled', data['enabled']);
 
-  var action = data['enabled']
-    ? self.enableBluetoothOutput(mac)
-    : self.disableBluetoothOutput();
+  var prep = libQ.resolve();
+  if (deviceChanged) {
+    self.logger.info('[BluetoothOut] switching device from ' + previousMac + ' to ' + mac);
+    prep = run('mpc disable "' + MPD_OUTPUT_NAME + '"').fail(function () {})
+      .then(function () { return run('bluetoothctl disconnect ' + previousMac).fail(function () {}); });
+  }
 
-  action.then(function () {
+  prep.then(function () {
+    return data['enabled']
+      ? self.enableBluetoothOutput(mac)
+      : self.disableBluetoothOutput();
+  }).then(function () {
     self.commandRouter.pushToastMessage('success', 'Bluetooth Output',
-      data['enabled'] ? 'Bluetooth-выход включён' : 'Bluetooth-выход выключен');
+      data['enabled'] ? 'Bluetooth-выход включён (' + deviceName + ')' : 'Bluetooth-выход выключен');
     defer.resolve({});
   }).fail(function (e) {
     self.logger.error('[BluetoothOut] saveBluetoothConfig failed: ' + e);

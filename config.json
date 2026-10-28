@@ -2,5 +2,6 @@
   "enabled": {"type": "boolean", "value": false},
   "deviceMac": {"type": "string", "value": ""},
   "deviceName": {"type": "string", "value": ""},
-  "connectionStatus": {"type": "string", "value": "Not configured"}
+  "connectionStatus": {"type": "string", "value": "Not configured"},
+  "discoveredDevicesJson": {"type": "string", "value": "[]"}
 }

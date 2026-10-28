@@ -20,6 +20,17 @@
       },
       "content": [
         {
+          "id": "scanDevices",
+          "element": "button",
+          "label": "TRANSLATE.BT_OUT.SCAN",
+          "doc": "TRANSLATE.BT_OUT.SCAN_DOC",
+          "onClick": {
+            "type": "plugin",
+            "endpoint": "audio_interface/volumio-bt-out-plugin",
+            "method": "scanForDevices"
+          }
+        },
+        {
           "id": "enabled",
           "element": "switch",
           "label": "TRANSLATE.BT_OUT.ENABLE",
@@ -28,11 +39,11 @@
         },
         {
           "id": "deviceMac",
-          "element": "input",
+          "element": "select",
           "doc": "TRANSLATE.BT_OUT.MAC_DOC",
           "label": "TRANSLATE.BT_OUT.MAC",
-          "element_subtype": "text",
-          "value": ""
+          "value": {"value": "", "label": "TRANSLATE.BT_OUT.NO_DEVICE"},
+          "options": []
         },
         {
           "id": "deviceName",
@@ -40,7 +51,8 @@
           "doc": "TRANSLATE.BT_OUT.NAME_DOC",
           "label": "TRANSLATE.BT_OUT.NAME",
           "element_subtype": "text",
-          "value": ""
+          "value": "",
+          "attributes": [{"readonly": true}]
         },
         {
           "id": "connectionStatus",
