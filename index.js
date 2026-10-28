@@ -418,13 +418,20 @@ ControllerBluetoothOut.prototype.enableBluetoothOutput = function (mac) {
     .then(function () { return self.ensureMpdOutputStanza(); })
     .then(function (needsRestart) {
       if (needsRestart) {
-        self.logger.info('[BluetoothOut] mpd.conf changed, restarting mpd');
-        return run('sudo systemctl restart mpd').then(function () {
+        self.logger.info('[BluetoothOut] mpd.conf changed, restarting mpd via Volumio\'s own mpd plugin');
+        // IMPORTANT: do NOT just `sudo systemctl restart mpd` ourselves - Volumio's
+        // backend holds its own persistent MPD client socket, and killing mpd out
+        // from under it leaves that socket permanently broken (EPIPE on every
+        // command, playback/browsing dead) until the whole volumio service is
+        // restarted. mpd's own restartMpd() method restarts the service AND
+        // re-establishes Volumio's internal connection (mpdEstablish()).
+        var d = libQ.defer();
+        self.commandRouter.executeOnPlugin('music_service', 'mpd', 'restartMpd', function (err) {
+          if (err) { d.reject(err); return; }
           // give mpd a moment to come back up before talking mpc to it
-          var d = libQ.defer();
           setTimeout(function () { d.resolve(); }, 3000);
-          return d.promise;
         });
+        return d.promise;
       }
     })
     .then(function () { return run('mpc enable "' + MPD_OUTPUT_NAME + '"'); })
