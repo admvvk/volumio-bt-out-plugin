@@ -11,7 +11,7 @@
       "icon": "fa-bluetooth",
       "onSave": {
         "type": "controller",
-        "endpoint": "audio_interface/volumio_bt_out_plugin",
+        "endpoint": "audio_interface/volumio-bt-out-plugin",
         "method": "saveBluetoothConfig"
       },
       "saveButton": {
