@@ -342,8 +342,11 @@ ControllerBluetoothOut.prototype.ensureMpdOutputStanza = function () {
   var defer = libQ.defer();
   try {
     var content = fs.readFileSync(MPD_CONF, 'utf8');
-    if (content.indexOf('name\t\t"' + MPD_OUTPUT_NAME + '"') !== -1 ||
-        content.indexOf('name "' + MPD_OUTPUT_NAME + '"') !== -1) {
+    // Match any amount/kind of whitespace between "name" and the quoted value -
+    // mpd.conf gets rewritten/reformatted by Volumio's own alsa_controller on
+    // every boot, so never assume a specific tab/space layout survives.
+    var existsRe = new RegExp('name\\s+"' + MPD_OUTPUT_NAME + '"');
+    if (existsRe.test(content)) {
       defer.resolve(false);
       return defer.promise;
     }
