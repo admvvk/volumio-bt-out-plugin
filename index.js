@@ -40,12 +40,15 @@ ControllerBluetoothOut.prototype.onStart = function () {
   var defer = libQ.defer();
 
   if (self.config.get('enabled') && self.config.get('deviceMac')) {
-    self.enableBluetoothOutput(self.config.get('deviceMac'))
-      .then(function () { defer.resolve(); })
-      .fail(function (e) {
-        self.logger.error('[BluetoothOut] onStart failed: ' + e);
-        defer.resolve();
-      });
+    // The Bluetooth adapter/bluetoothd may not be fully up yet this early in
+    // the boot sequence; give it a few seconds before the first connect try.
+    setTimeout(function () {
+      self.enableBluetoothOutput(self.config.get('deviceMac'))
+        .fail(function (e) {
+          self.logger.error('[BluetoothOut] onStart failed: ' + e);
+        });
+    }, 8000);
+    defer.resolve();
   } else {
     defer.resolve();
   }
@@ -162,7 +165,11 @@ ControllerBluetoothOut.prototype.saveBluetoothConfig = function (data) {
   var self = this;
   var defer = libQ.defer();
 
-  var mac = (data['deviceMac'] || '').trim().toUpperCase();
+  // Volumio's "select" element submits the whole {value, label} option object,
+  // not a bare string - handle both shapes defensively.
+  var rawMac = data['deviceMac'];
+  if (rawMac && typeof rawMac === 'object') { rawMac = rawMac.value; }
+  var mac = (rawMac || '').toString().trim().toUpperCase();
   var macRegex = /^([0-9A-F]{2}:){5}[0-9A-F]{2}$/;
 
   if (data['enabled'] && !macRegex.test(mac)) {
@@ -346,6 +353,10 @@ ControllerBluetoothOut.prototype.ensureMpdOutputStanza = function () {
       '    name            "' + MPD_OUTPUT_NAME + '"\n' +
       '    device          "bluetoothOut"\n' +
       '    mixer_type      "software"\n' +
+      // A USB Bluetooth A2DP link (SBC encode + wireless jitter) needs a much
+      // bigger buffer than a local hardware DAC, or it stutters/underruns.
+      '    buffer_time     "500000"\n' +
+      '    period_time     "100000"\n' +
       '    enabled         "no"\n' +
       '}\n';
 
@@ -364,12 +375,32 @@ ControllerBluetoothOut.prototype.ensureMpdOutputStanza = function () {
   return defer.promise;
 };
 
+// Check BlueZ's own notion of whether this device is actually connected,
+// regardless of what the last `connect` command claimed.
+function isDeviceConnected(mac) {
+  return run('bluetoothctl info ' + mac, { timeout: 10000 })
+    .then(function (stdout) { return /Connected:\s*yes/.test(stdout); })
+    .fail(function () { return false; });
+}
+
 ControllerBluetoothOut.prototype.connectDevice = function (mac) {
   var self = this;
   self.config.set('connectionStatus', 'Connecting to ' + mac + '...');
   return run('bluetoothctl power on')
     .then(function () { return run('bluetoothctl trust ' + mac).fail(function () { /* already trusted / not fatal */ }); })
-    .then(function () { return run('bluetoothctl connect ' + mac, { timeout: 25000 }); })
+    .then(function () {
+      return run('bluetoothctl connect ' + mac, { timeout: 25000 })
+        .fail(function (e) {
+          // bluetoothctl reports org.bluez.Error.Failed when asked to connect
+          // a device that is already connected (e.g. reconnected automatically
+          // via the "Trusted" flag). That's not an actual failure - verify the
+          // real state via `info` before giving up.
+          return isDeviceConnected(mac).then(function (alreadyConnected) {
+            if (!alreadyConnected) { throw e; }
+            self.logger.info('[BluetoothOut] connect reported an error but device is already connected: ' + mac);
+          });
+        });
+    })
     .then(function () {
       self.config.set('connectionStatus', 'Connected to ' + mac);
     });
