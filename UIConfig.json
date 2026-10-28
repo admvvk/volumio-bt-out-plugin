@@ -20,15 +20,6 @@
       },
       "content": [
         {
-          "id": "usageNotice",
-          "element": "input",
-          "doc": "TRANSLATE.BT_OUT.NOTICE_DOC",
-          "label": "TRANSLATE.BT_OUT.NOTICE_LABEL",
-          "element_subtype": "text",
-          "value": "TRANSLATE.BT_OUT.NOTICE_TEXT",
-          "attributes": [{"readonly": true}]
-        },
-        {
           "id": "scanDevices",
           "element": "button",
           "label": "TRANSLATE.BT_OUT.SCAN",

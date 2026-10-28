@@ -92,11 +92,11 @@ ControllerBluetoothOut.prototype.getUIConfig = function () {
     var selectedOption = options.find(function (o) { return o.value === currentMac; }) ||
       { value: '', label: '-- no device selected --' };
 
-    uiconf.sections[0].content[2].value = self.config.get('enabled');
-    uiconf.sections[0].content[3].options = options;
-    uiconf.sections[0].content[3].value = selectedOption;
-    uiconf.sections[0].content[4].value = currentName;
-    uiconf.sections[0].content[5].value = self.config.get('connectionStatus');
+    uiconf.sections[0].content[1].value = self.config.get('enabled');
+    uiconf.sections[0].content[2].options = options;
+    uiconf.sections[0].content[2].value = selectedOption;
+    uiconf.sections[0].content[3].value = currentName;
+    uiconf.sections[0].content[4].value = self.config.get('connectionStatus');
     defer.resolve(uiconf);
   }).fail(function (e) {
     self.logger.error('[BluetoothOut] getUIConfig failed: ' + e);

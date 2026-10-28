@@ -2,10 +2,7 @@
   "BT_OUT": {
     "PLUGIN_NAME": "Bluetooth Output",
     "SECTION_TITLE": "Bluetooth Output (A2DP source)",
-    "SECTION_DESC": "Stream Volumio playback to a Bluetooth speaker or amplifier. Click 'Scan for devices', wait a few seconds, then pick your device from the list below. Enable and Save.",
-    "NOTICE_LABEL": "⚠️ Important before use",
-    "NOTICE_DOC": "Known limitations - follow these to avoid losing sound.",
-    "NOTICE_TEXT": "1) STOP playback before switching devices here or powering off the speaker/amp. 2) If there is no sound after switching devices, reboot Volumio (System -> Reboot). 3) After a reboot, wait ~15s before playing, or the first track may stutter.",
+    "SECTION_DESC": "Stream Volumio playback to a Bluetooth speaker or amplifier. ⚠️ IMPORTANT, to avoid losing sound: 1) Stop playback before switching devices on this page or before powering off the speaker/amp. 2) If there is no sound after switching devices, reboot Volumio (Settings -> System -> Reboot). 3) After a reboot, wait ~15 seconds before pressing play, or the first track may stutter. How to use: click 'Scan for devices', wait ~10 seconds, close and re-open this settings page, pick your device from the list below, enable the toggle and press Save.",
     "SCAN": "Scan for devices (~10s)",
     "SCAN_DOC": "Looks for nearby Bluetooth devices (~8s). Close and re-open this settings page afterwards to see them in the device list below.",
     "ENABLE": "Enable Bluetooth output",
