@@ -146,10 +146,20 @@ ControllerBluetoothOut.prototype.ensureBlueAlsaInstalled = function () {
   } catch (e) {
     self.logger.info('[BluetoothOut] bluealsa not installed, installing via apt...');
     self.config.set('connectionStatus', 'Installing bluealsa...');
-    run('apt-get update && apt-get install -y bluealsa', { timeout: 180000, maxBuffer: 1024 * 1024 * 10 })
+    // volumio user has passwordless sudo for apt-get/systemctl (see /etc/sudoers.d) -
+    // the backend itself runs unprivileged, so these MUST go through sudo.
+    // NOTE: on this Buster-based image, raspbian.raspberrypi.org is EOL/404 for some
+    // package versions (e.g. libbluetooth3's "candidate"); archive.raspberrypi.org
+    // still serves a working libbluetooth3 build, so pin it explicitly as a fallback.
+    run('sudo apt-get update; sudo apt-get install -y bluealsa', { timeout: 180000, maxBuffer: 1024 * 1024 * 10 })
+      .fail(function () {
+        self.logger.info('[BluetoothOut] plain bluealsa install failed, retrying with pinned libbluetooth3 (archive.raspberrypi.org)');
+        return run('sudo apt-get install -y bluealsa libbluetooth3=5.50-1.2~deb10u3+rpt1', { timeout: 180000, maxBuffer: 1024 * 1024 * 10 });
+      })
       .then(function () {
-        // make sure the daemon is enabled/running
-        return run('systemctl enable --now bluealsa');
+        // bluealsa.service is a static unit on this image (no [Install] section),
+        // so 'enable' is a no-op/warning - just make sure it's started.
+        return run('sudo systemctl start bluealsa');
       })
       .then(function () { defer.resolve(); })
       .fail(function (e2) { defer.reject(e2); });
@@ -187,8 +197,18 @@ ControllerBluetoothOut.prototype.writeAsoundBlock = function (mac) {
       '}\n' +
       BT_MARK_END + '\n';
 
-    fs.writeFileSync(ASOUND_FILE, content.trimEnd() + '\n' + block);
-    defer.resolve();
+    var finalContent = content.trimEnd() + '\n' + block;
+    var tmpFile = '/tmp/.bt_out_asound_' + Date.now() + '.conf';
+    fs.writeFileSync(tmpFile, finalContent);
+    // /etc/asound.conf is root-owned; volumio user only has NOPASSWD sudo for
+    // specific binaries (tee, mv, chmod, ...), not an arbitrary editor, so we
+    // write as ourselves to /tmp then let root 'tee' it into place.
+    run('cat ' + tmpFile + ' | sudo tee ' + ASOUND_FILE + ' > /dev/null')
+      .then(function () {
+        try { fs.unlinkSync(tmpFile); } catch (e2) { /* non-fatal */ }
+        defer.resolve();
+      })
+      .fail(function (e3) { defer.reject(e3); });
   } catch (e) {
     defer.reject(e);
   }
@@ -199,16 +219,22 @@ ControllerBluetoothOut.prototype.writeAsoundBlock = function (mac) {
 ControllerBluetoothOut.prototype.removeAsoundBlock = function () {
   var defer = libQ.defer();
   try {
-    if (fs.existsSync(ASOUND_FILE)) {
-      var content = fs.readFileSync(ASOUND_FILE, 'utf8');
-      var startIdx = content.indexOf(BT_MARK_START);
-      var endIdx = content.indexOf(BT_MARK_END);
-      if (startIdx !== -1 && endIdx !== -1) {
-        content = content.slice(0, startIdx) + content.slice(endIdx + BT_MARK_END.length);
-        fs.writeFileSync(ASOUND_FILE, content);
-      }
-    }
-    defer.resolve();
+    if (!fs.existsSync(ASOUND_FILE)) { defer.resolve(); return defer.promise; }
+
+    var content = fs.readFileSync(ASOUND_FILE, 'utf8');
+    var startIdx = content.indexOf(BT_MARK_START);
+    var endIdx = content.indexOf(BT_MARK_END);
+    if (startIdx === -1 || endIdx === -1) { defer.resolve(); return defer.promise; }
+
+    content = content.slice(0, startIdx) + content.slice(endIdx + BT_MARK_END.length);
+    var tmpFile = '/tmp/.bt_out_asound_' + Date.now() + '.conf';
+    fs.writeFileSync(tmpFile, content);
+    run('cat ' + tmpFile + ' | sudo tee ' + ASOUND_FILE + ' > /dev/null')
+      .then(function () {
+        try { fs.unlinkSync(tmpFile); } catch (e2) { /* non-fatal */ }
+        defer.resolve();
+      })
+      .fail(function (e3) { defer.reject(e3); });
   } catch (e) {
     defer.reject(e);
   }
@@ -236,8 +262,15 @@ ControllerBluetoothOut.prototype.ensureMpdOutputStanza = function () {
       '    enabled         "no"\n' +
       '}\n';
 
-    fs.appendFileSync(MPD_CONF, stanza);
-    defer.resolve(true);
+    var newContent = content.trimEnd() + '\n' + stanza;
+    var tmpFile = '/tmp/.bt_out_mpd_' + Date.now() + '.conf';
+    fs.writeFileSync(tmpFile, newContent);
+    run('cat ' + tmpFile + ' | sudo tee ' + MPD_CONF + ' > /dev/null')
+      .then(function () {
+        try { fs.unlinkSync(tmpFile); } catch (e2) { /* non-fatal */ }
+        defer.resolve(true);
+      })
+      .fail(function (e3) { defer.reject(e3); });
   } catch (e) {
     defer.reject(e);
   }
@@ -265,7 +298,7 @@ ControllerBluetoothOut.prototype.enableBluetoothOutput = function (mac) {
     .then(function (needsRestart) {
       if (needsRestart) {
         self.logger.info('[BluetoothOut] mpd.conf changed, restarting mpd');
-        return run('systemctl restart mpd').then(function () {
+        return run('sudo systemctl restart mpd').then(function () {
           // give mpd a moment to come back up before talking mpc to it
           var d = libQ.defer();
           setTimeout(function () { d.resolve(); }, 3000);
@@ -273,7 +306,7 @@ ControllerBluetoothOut.prototype.enableBluetoothOutput = function (mac) {
         });
       }
     })
-    .then(function () { return run('mpc enableoutput "' + MPD_OUTPUT_NAME + '"'); })
+    .then(function () { return run('mpc enable "' + MPD_OUTPUT_NAME + '"'); })
     .then(function () {
       self.config.set('connectionStatus', 'Active: streaming to ' + mac);
     });
@@ -283,7 +316,7 @@ ControllerBluetoothOut.prototype.disableBluetoothOutput = function () {
   var self = this;
   var defer = libQ.defer();
 
-  run('mpc disableoutput "' + MPD_OUTPUT_NAME + '"')
+  run('mpc disable "' + MPD_OUTPUT_NAME + '"')
     .fail(function () { /* output may not exist yet, not fatal */ })
     .then(function () {
       var mac = self.config ? self.config.get('deviceMac') : null;
